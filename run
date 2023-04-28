@@ -1,0 +1,2 @@
+clang++ processor.cpp main.cpp -o xvm
+./xvm
