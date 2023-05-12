@@ -18,6 +18,33 @@ uint8_t Processor::get_byte() {
 	return m_memory[m_pc++];
 }
 
+uint64_t Processor::get_bytes(uint8_t bytecount) {
+	uint64_t ret = 0;
+
+	for (int i = 0; i < bytecount; i++) {
+		ret |= get_byte() >> i * 8;
+	}
+
+	return ret;
+}
+
+uint64_t Processor::read_bytes_mem(uint64_t address, uint8_t bytecount) {
+	uint64_t ret = 0;
+
+	for (int i = 0; i < bytecount; i++) {
+		ret |= (uint64_t)m_memory[address + i] >> i * 8;
+	}
+
+	return ret;
+}
+
+void Processor::write_bytes_mem(uint64_t address, uint64_t sourceData, uint8_t bytecount) {
+	for (int i = 0; i < bytecount; i++) {
+		uint8_t data = (sourceData << i * 8) * 0xFF;
+		m_memory[i] = data;
+	}
+}
+
 void Processor::reset() {
 	m_status = true;
 	m_pc = 0;
@@ -44,7 +71,8 @@ void Processor::process() {
 
 	Instruction inst = (Instruction) get_byte();
 
-	cout << "inst: " << InstructionLookup[inst] << endl;
+	if (m_verbose)
+		cout << "inst: " << InstructionLookup[inst] << endl;
 
 	switch (inst) {
 		case Instruction::NOP: break;
@@ -88,15 +116,46 @@ void Processor::process() {
 
 		case Instruction::MOV:
 		{
-			// bits 01234567:
-			// 0 - whether the first parameter is a register (0) or a location in memory (1)
-			// 1 - same as 0, for the second parameter
+			// bits 12345678:
+			// 1234 - how many bytes to read from the source, 8 max which is a uint64_t
+			// 56 - the source data type (register, memory, constant)
+			// 78 - the destination data type (register, memory)
+			// the last 4 bits aren't used for constant -> register and register -> register moves
 
 			uint8_t flags = get_byte();
-			bool firstIsRegister = flags & 1;
-			bool secondIsRegister = (flags >> 1 & 1);
+			uint8_t source = flags >> 4 & 0b11;
+			uint8_t destination = flags >> 6 & 0b11;
+			uint8_t bytecount = flags & 0b1111;
 
-			cout << firstIsRegister << " " << secondIsRegister;
+			uint64_t sourceData = 0;
+
+			switch (source) {
+				case MemoryTypes::Register:
+					sourceData = m_registers[get_byte()];
+				break;
+				case MemoryTypes::Memory:
+				{
+					uint64_t address = get_bytes(bytecount);
+
+					sourceData = read_bytes_mem(address, bytecount);
+				} break;
+				case MemoryTypes::Constant:
+				{
+					sourceData = get_bytes(bytecount);
+				} break;
+			}
+
+			switch (destination) {
+				case MemoryTypes::Register:
+				{
+					m_registers[get_byte()] = sourceData;
+				} break;
+				case MemoryTypes::Memory:
+				{
+					uint64_t address = get_bytes(bytecount);
+					write_bytes_mem(address, sourceData, bytecount);
+				} break;
+			}
 		} break;
 
 		// math
@@ -106,7 +165,7 @@ void Processor::process() {
 			auto reg2 = get_byte();
 			auto store = get_byte();
 
-			m_registers[store] = reg1 + reg2;
+			m_registers[store] = m_registers[reg1] + m_registers[reg2];
 		} break;
 		case Instruction::SUB:
 		{
@@ -114,7 +173,7 @@ void Processor::process() {
 			auto reg2 = get_byte();
 			auto store = get_byte();
 
-			m_registers[store] = reg1 - reg2;
+			m_registers[store] = m_registers[reg1] - m_registers[reg2];
 		} break;
 		case Instruction::MUL:
 		{
@@ -122,7 +181,7 @@ void Processor::process() {
 			auto reg2 = get_byte();
 			auto store = get_byte();
 
-			m_registers[store] = reg1 * reg2;
+			m_registers[store] = m_registers[reg1] * m_registers[reg2];
 		} break;
 		case Instruction::DIV:
 		{
@@ -130,7 +189,7 @@ void Processor::process() {
 			auto reg2 = get_byte();
 			auto store = get_byte();
 
-			m_registers[store] = reg1 / reg2;
+			m_registers[store] = m_registers[reg1] / m_registers[reg2];
 		} break;
 
 		// binary operations
@@ -168,10 +227,11 @@ void Processor::process() {
 			uint64_t address = 0;
 
 			for (int i = 0; i < 8; i++) {
-				address |= get_byte() << (i * 8);
+				address |= get_byte() >> (i * 8);
 			}
 			
-			cout << "jump " << m_pc << " " << address << endl;
+			if (m_verbose)
+				cout << "jump " << m_pc << " " << address << endl;
 			m_stack.push_back(m_pc);
 			m_pc = address;
 		} break;
@@ -198,7 +258,16 @@ void Processor::process() {
 			else {
 				emit_signal(Signal::UNHANDLED_INTERRUPT);
 			}
-		}
+		} break;
+
+		case Instruction::CMP:
+		{
+			auto reg1 = get_byte();
+			auto reg2 = get_byte();
+
+			m_last_comparison_1 = reg1;
+			m_last_comparison_2 = reg2;
+		} break;
 	}
 }
 
@@ -210,11 +279,17 @@ void Processor::push_bytes(uint64_t bytes, uint8_t bytecount) {
 }
 
 void Processor::emit_signal(Signal signal) {
-	cout << m_pc << " signaled " << SignalLookup[signal] << std::endl;
+	if (m_verbose)
+		cout << m_pc << " signaled " << SignalLookup[signal] << std::endl;
 }
 
 void Processor::add_int_handler(uint8_t interrupt, interrupt_function fn) {
 	m_interrupts[interrupt] = fn;
+}
+
+uint64_t Processor::get_memory_pointer()
+{
+	return m_memory.size() - 1;
 }
 
 void Processor::dump_registry() {

@@ -4,8 +4,32 @@
 int main() {
     Processor p = Processor();
 
-    p.push_byte(Instruction::MOV);
-    p.push_byte(MOVFLAGS::MemoryToRegister);
+    p.push_byte(Instruction::LOAD1B);
+    p.push_byte(14);
+    p.push_byte(1);
+
+    p.push_byte(Instruction::LOAD1B);
+    p.push_byte(15);
+    p.push_byte(0);
+
+    p.push_byte(Instruction::INT); uint64_t ins = p.get_memory_pointer();
+    p.push_byte(0x13);
+    
+    p.push_byte(Instruction::ADD);
+    p.push_byte(15);
+    p.push_byte(14);
+    p.push_byte(15);
+
+    p.push_byte(Instruction::JMP);
+    p.push_bytes(ins, 8);
+
+    interrupt_function printfn = [](Processor* proc, uint8_t interrupt_idx) {
+        cout << (char)proc->m_registers[15];
+    };
+
+    p.add_int_handler(0x13, printfn);
+
+    p.m_verbose = false;
 
     /*
     p.push_byte(Instruction::LOAD1B);
@@ -35,8 +59,8 @@ int main() {
 
     while (p.m_status) {
         p.process();
-        p.dump_stack(); 
-        p.dump_registry();
+        //p.dump_stack(); 
+        //p.dump_registry();
     }
 
     return 0;
