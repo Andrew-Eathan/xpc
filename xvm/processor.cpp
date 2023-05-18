@@ -70,7 +70,8 @@ void Processor::process() {
 
 	Instruction inst = (Instruction) get_byte();
 
-	cout << "inst: " << InstructionLookup[inst] << endl;
+	if (m_verbose)
+		cout << "inst: " << InstructionLookup[inst] << endl;
 
 	switch (inst) {
 		case Instruction::NOP: break;
@@ -118,7 +119,7 @@ void Processor::process() {
 			// 1234 - how many bytes to read from the source, 8 max which is a uint64_t
 			// 56 - the source data type (register, memory, constant)
 			// 78 - the destination data type (register, memory)
-			// the first 4 bits aren't used for constant -> register and register -> register moves
+			// the last 4 bits aren't used for constant -> register and register -> register moves
 
 			uint8_t flags = get_byte();
 			uint8_t source = flags >> 4 & 0b11;
@@ -128,27 +129,27 @@ void Processor::process() {
 			uint64_t sourceData = 0;
 
 			switch (source) {
-				case MOVTypes::Register:
+				case MemoryTypes::Register:
 					sourceData = m_registers[get_byte()];
 				break;
-				case MOVTypes::Memory:
+				case MemoryTypes::Memory:
 				{
 					uint64_t address = get_bytes(bytecount);
 
 					sourceData = read_bytes_mem(address, bytecount);
 				} break;
-				case MOVTypes::Constant: 
+				case MemoryTypes::Constant:
 				{
 					sourceData = get_bytes(bytecount);
 				} break;
 			}
 
 			switch (destination) {
-				case MOVTypes::Register: 
+				case MemoryTypes::Register:
 				{
 					m_registers[get_byte()] = sourceData;
 				} break;
-				case MOVTypes::Memory:
+				case MemoryTypes::Memory:
 				{
 					uint64_t address = get_bytes(bytecount);
 					write_bytes_mem(address, sourceData, bytecount);
@@ -228,7 +229,8 @@ void Processor::process() {
 				address |= (uint64_t) get_byte() << (i * 8);
 			}
 			
-			cout << "jump " << m_pc << " " << address << endl;
+			if (m_verbose)
+				cout << "jump " << m_pc << " " << address << endl;
 			m_stack.push_back(m_pc);
 			m_pc = address;
 		} break;
@@ -255,7 +257,16 @@ void Processor::process() {
 			else {
 				emit_signal(Signal::UNHANDLED_INTERRUPT);
 			}
-		}
+		} break;
+
+		case Instruction::CMP:
+		{
+			auto reg1 = get_byte();
+			auto reg2 = get_byte();
+
+			m_last_comparison_1 = reg1;
+			m_last_comparison_2 = reg2;
+		} break;
 	}
 }
 
@@ -267,11 +278,17 @@ void Processor::push_bytes(uint64_t bytes, uint8_t bytecount) {
 }
 
 void Processor::emit_signal(Signal signal) {
-	cout << m_pc << " signaled " << SignalLookup[signal] << std::endl;
+	if (m_verbose)
+		cout << m_pc << " signaled " << SignalLookup[signal] << std::endl;
 }
 
 void Processor::add_int_handler(uint8_t interrupt, interrupt_function fn) {
 	m_interrupts[interrupt] = fn;
+}
+
+uint64_t Processor::get_memory_pointer()
+{
+	return m_memory.size() - 1;
 }
 
 void Processor::dump_registry() {

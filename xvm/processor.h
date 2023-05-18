@@ -19,20 +19,17 @@ enum Signal : uint8_t {
 	UNHANDLED_INTERRUPT
 };
 
-enum MOVTypes : uint8_t {
+enum MemoryTypes {
 	Register = 0b00,
 	Memory = 0b01,
 	Constant = 0b10
 };
 
-enum MOVFlags : uint8_t {
-	RegisterToRegister = Register | Register << 2,
-	RegisterToMemory = Register | Memory << 2,
-
-	MemoryToRegister = Memory | Register << 2,
-	MemoryToMemory = Memory | Memory << 2,
-
-	ConstantToMemory = Constant | Memory << 2
+enum MOVFLAGS {
+	RegisterToRegister	= 0,
+	RegisterToMemory = Memory << 2,
+	MemoryToMemory		= Memory | (Memory << 2),
+	MemoryToRegister	= Memory | (Register << 2)
 };
 
 const string SignalLookup[] = {
@@ -55,6 +52,8 @@ enum Instruction : uint8_t {
 	ADD, SUB,
 	MUL, DIV,
 
+	JE, JNE, JG, JL, JGE, JLE, CMP,
+
 	NOT, AND, OR, XOR,
 
 	// cpuid will be implemented later
@@ -72,6 +71,8 @@ const string InstructionLookup[] = {
 	"ADD", "SUB",
 	"MUL", "DIV",
 
+	"JE", "JNE", "JG", "JL", "JGE", "JLE", "CMP",
+
 	"NOT", "AND", "OR", "XOR",
 
 	// cpuid will be implemented later
@@ -84,7 +85,8 @@ private:
 	uint64_t m_pc;
 
 	vector<uint64_t> m_stack;
-
+	int64_t m_last_comparison_1;
+	int64_t m_last_comparison_2;
 	interrupt_map m_interrupts;
 
 	uint8_t get_byte();
@@ -98,6 +100,7 @@ public:
 	int64_t m_registers[16];
 
 	bool m_status;
+	bool m_verbose;
 	void reset();
 	Processor();
 	void process();
@@ -107,6 +110,7 @@ public:
 	void push_byte(uint8_t);
 	void push_bytes(uint64_t bytes, uint8_t bytecount);
 	void add_int_handler(uint8_t interrupt, interrupt_function fn);
+	uint64_t get_memory_pointer();
 };
 
 
