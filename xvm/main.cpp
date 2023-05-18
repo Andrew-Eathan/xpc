@@ -4,8 +4,19 @@
 int main() {
     Processor p = Processor();
 
+    p.push_byte(Instruction::LOAD1B);
+    p.push_byte(0);
+    p.push_byte(56);
+
     p.push_byte(Instruction::MOV);
-    p.push_byte(MOVFLAGS::MemoryToRegister);
+    p.push_byte(MOVFlags::RegisterToRegister);
+    p.push_byte(0);
+    p.push_byte(1);
+
+    p.push_byte(Instruction::ADD);
+    p.push_byte(0);
+    p.push_byte(1);
+    p.push_byte(0);
 
     /*
     p.push_byte(Instruction::LOAD1B);

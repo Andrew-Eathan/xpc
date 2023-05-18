@@ -18,6 +18,32 @@ uint8_t Processor::get_byte() {
 	return m_memory[m_pc++];
 }
 
+uint64_t Processor::get_bytes(uint8_t bytes) {
+	uint64_t ret = 0;
+
+	for (int i = 0; i < bytes; i++) {
+		ret |= (uint64_t)get_byte() << (i * 8);
+	}
+
+	return ret;
+}
+
+uint64_t Processor::read_bytes_mem(uint64_t byteIndex, uint8_t bytes) {
+	uint64_t ret = 0;
+
+	for (int i = 0; i < bytes; i++) {
+		ret |= (uint64_t) m_memory[byteIndex + i] << (i * 8);
+	}
+
+	return ret;
+}
+
+void Processor::write_bytes_mem(uint64_t address, uint64_t data, uint8_t bytes) {
+	for (int i = 0; i < bytes; i++) {
+		m_memory[address + i] = data >> (i * 8) & 0xFF;
+	}
+}
+
 void Processor::reset() {
 	m_status = true;
 	m_pc = 0;
@@ -31,7 +57,7 @@ void Processor::load_register(uint8_t reg, uint8_t count) {
 
 	for (int i = 0; i < count; i++) {
 		auto val = get_byte();
-		m_registers[reg] |= val << (i * 8);
+		m_registers[reg] |= (uint64_t) val << (i * 8);
 	}
 }
 
@@ -88,15 +114,46 @@ void Processor::process() {
 
 		case Instruction::MOV:
 		{
-			// bits 01234567:
-			// 0 - whether the first parameter is a register (0) or a location in memory (1)
-			// 1 - same as 0, for the second parameter
+			// bits 12345678:
+			// 1234 - how many bytes to read from the source, 8 max which is a uint64_t
+			// 56 - the source data type (register, memory, constant)
+			// 78 - the destination data type (register, memory)
+			// the first 4 bits aren't used for constant -> register and register -> register moves
 
 			uint8_t flags = get_byte();
-			bool firstIsRegister = flags & 1;
-			bool secondIsRegister = (flags >> 1 & 1);
+			uint8_t source = flags >> 4 & 0b11;
+			uint8_t destination = flags >> 6 & 0b11;
+			uint8_t bytecount = flags & 0b1111;
 
-			cout << firstIsRegister << " " << secondIsRegister;
+			uint64_t sourceData = 0;
+
+			switch (source) {
+				case MOVTypes::Register:
+					sourceData = m_registers[get_byte()];
+				break;
+				case MOVTypes::Memory:
+				{
+					uint64_t address = get_bytes(bytecount);
+
+					sourceData = read_bytes_mem(address, bytecount);
+				} break;
+				case MOVTypes::Constant: 
+				{
+					sourceData = get_bytes(bytecount);
+				} break;
+			}
+
+			switch (destination) {
+				case MOVTypes::Register: 
+				{
+					m_registers[get_byte()] = sourceData;
+				} break;
+				case MOVTypes::Memory:
+				{
+					uint64_t address = get_bytes(bytecount);
+					write_bytes_mem(address, sourceData, bytecount);
+				} break;
+			}
 		} break;
 
 		// math
@@ -106,7 +163,7 @@ void Processor::process() {
 			auto reg2 = get_byte();
 			auto store = get_byte();
 
-			m_registers[store] = reg1 + reg2;
+			m_registers[store] = m_registers[reg1] + m_registers[reg2];
 		} break;
 		case Instruction::SUB:
 		{
@@ -114,7 +171,7 @@ void Processor::process() {
 			auto reg2 = get_byte();
 			auto store = get_byte();
 
-			m_registers[store] = reg1 - reg2;
+			m_registers[store] = m_registers[reg1] - m_registers[reg2];
 		} break;
 		case Instruction::MUL:
 		{
@@ -122,7 +179,7 @@ void Processor::process() {
 			auto reg2 = get_byte();
 			auto store = get_byte();
 
-			m_registers[store] = reg1 * reg2;
+			m_registers[store] = m_registers[reg1] * m_registers[reg2];
 		} break;
 		case Instruction::DIV:
 		{
@@ -130,7 +187,7 @@ void Processor::process() {
 			auto reg2 = get_byte();
 			auto store = get_byte();
 
-			m_registers[store] = reg1 / reg2;
+			m_registers[store] = m_registers[reg1] / m_registers[reg2];
 		} break;
 
 		// binary operations
@@ -168,7 +225,7 @@ void Processor::process() {
 			uint64_t address = 0;
 
 			for (int i = 0; i < 8; i++) {
-				address |= get_byte() << (i * 8);
+				address |= (uint64_t) get_byte() << (i * 8);
 			}
 			
 			cout << "jump " << m_pc << " " << address << endl;
@@ -221,6 +278,7 @@ void Processor::dump_registry() {
 	cout << "-- registry dump --" << endl;
 
 	for (int i = 0; i < 16; i++) {
+		if (m_registers[i] == 0) continue;
 		cout << "    " << i << ": " << m_registers[i] << endl;
 	}
 
@@ -232,6 +290,8 @@ void Processor::dump_stack() {
 
 	for (int i = 0; i < m_stack.size(); i++) {
 		auto val = m_stack[i];
+		if (val == 0) continue;
+
 		cout << i << ": " << val;
 
 		if (i == 0) {

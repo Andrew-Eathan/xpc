@@ -10,7 +10,7 @@ class Processor;
 typedef function<void(Processor*, uint8_t)> interrupt_function;
 typedef map<uint8_t, interrupt_function> interrupt_map;
 
-enum Signal {
+enum Signal : uint8_t {
 	DEADEND = 0,
 	FAULT,
 	ERROR,
@@ -19,11 +19,20 @@ enum Signal {
 	UNHANDLED_INTERRUPT
 };
 
-enum MOVFLAGS {
-	RegisterToRegister	= 0b00,
-	RegisterToMemory	= 0b10,
-	MemoryToMemory		= 0b11,
-	MemoryToRegister	= 0b01
+enum MOVTypes : uint8_t {
+	Register = 0b00,
+	Memory = 0b01,
+	Constant = 0b10
+};
+
+enum MOVFlags : uint8_t {
+	RegisterToRegister = Register | Register << 2,
+	RegisterToMemory = Register | Memory << 2,
+
+	MemoryToRegister = Memory | Register << 2,
+	MemoryToMemory = Memory | Memory << 2,
+
+	ConstantToMemory = Constant | Memory << 2
 };
 
 const string SignalLookup[] = {
@@ -35,7 +44,7 @@ const string SignalLookup[] = {
 	"UNHANDLED_INTERRUPT"
 };
 
-enum Instruction {
+enum Instruction : uint8_t {
 	NOP = 0,
 
 	LOAD1B, LOAD2B, LOAD3B, LOAD4B,
@@ -79,6 +88,9 @@ private:
 	interrupt_map m_interrupts;
 
 	uint8_t get_byte();
+	uint64_t get_bytes(uint8_t bytes);
+	uint64_t read_bytes_mem(uint64_t byteIndex, uint8_t bytes);
+	void write_bytes_mem(uint64_t address, uint64_t byteIndex, uint8_t bytes);
 	void emit_signal(Signal);
 	void load_register(uint8_t, uint8_t);
 
